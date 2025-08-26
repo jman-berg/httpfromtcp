@@ -50,6 +50,14 @@ func (h Headers) Set(key, value string) {
 	h[key] = value
 }
 
+func (h Headers) Get(key string) string {
+	value, exists := h[strings.ToLower(key)]
+	if !exists {
+		return ""
+	}
+	return value
+}
+
 func isValidString(s string) bool {
 	allowedChars := map[rune]bool{
 		'!': true, '#': true, '$': true, '%': true, '&': true, '\'': true,

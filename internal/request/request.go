@@ -5,13 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/jman-berg/httpfromtcp/internal/headers"
 )
 
 type Request struct {
 	RequestLine RequestLine
 	State       requestState
+	Headers     headers.Headers
+	Body        []byte
 }
 
 type RequestLine struct {
@@ -25,6 +30,8 @@ type requestState int
 const (
 	requestStateInitialized requestState = iota
 	requestStateDone
+	requestStateParsingHeaders
+	requestStateParsingBody
 )
 
 const bufferSize = 8
@@ -35,7 +42,8 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	readToIndex := 0
 
 	request := &Request{
-		State: requestStateInitialized,
+		State:   requestStateInitialized,
+		Headers: headers.NewHeaders(),
 	}
 
 	for request.State != requestStateDone {
@@ -48,7 +56,9 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		numBytesRead, err := reader.Read(buf[readToIndex:])
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				request.State = requestStateDone
+				if request.State != requestStateDone {
+					return nil, fmt.Errorf("incomplete request, in state %d, read n bytes on EOF: %d", request.State, numBytesRead)
+				}
 				break
 			}
 			return nil, err
@@ -121,6 +131,21 @@ func requestLineFromString(str string) (*RequestLine, error) {
 }
 
 func (r *Request) parse(data []byte) (int, error) {
+	totalBytesParsed := 0
+	for r.State != requestStateDone {
+		n, err := r.parseSingle(data[totalBytesParsed:])
+		if err != nil {
+			return 0, err
+		}
+		totalBytesParsed += n
+		if n == 0 {
+			break
+		}
+	}
+	return totalBytesParsed, nil
+}
+
+func (r *Request) parseSingle(data []byte) (int, error) {
 	switch r.State {
 	case requestStateDone:
 		return 0, errors.New("Error: trying to read data in a done state")
@@ -135,8 +160,38 @@ func (r *Request) parse(data []byte) (int, error) {
 		}
 
 		r.RequestLine = *requestLine
-		r.State = 1
+		r.State = requestStateParsingHeaders
 		return processedBytes, nil
+
+	case requestStateParsingHeaders:
+		numProcessedBytes, done, err := r.Headers.Parse(data)
+		if err != nil {
+			return numProcessedBytes, err
+		}
+		if done {
+			r.State = requestStateParsingBody
+			return numProcessedBytes, nil
+		}
+		return numProcessedBytes, nil
+	case requestStateParsingBody:
+		contentLengthString := r.Headers.Get("content-length")
+		if contentLengthString == "" {
+			r.State = requestStateDone
+			return 0, nil
+		}
+		contentLength, err := strconv.Atoi(contentLengthString)
+		if err != nil {
+			return 0, fmt.Errorf("invalid content-length value %w", err)
+		}
+		r.Body = append(r.Body, data...)
+
+		if contentLength < len(r.Body) {
+			return 0, fmt.Errorf("Length of Body: %v exceeds content-length: %v", len(r.Body), contentLength)
+		}
+		if contentLength == len(r.Body) {
+			r.State = requestStateDone
+		}
+		return len(data), nil
 	default:
 		return 0, errors.New("Error: unknown state")
 	}

@@ -1,45 +1,15 @@
-package httpserver
+package main
 
 import (
 	"log"
-	"net"
 	"os"
 	"os/signal"
-	"strconv"
-	"sync/atomic"
 	"syscall"
+
+	"github.com/jman-berg/httpfromtcp/internal/server"
 )
 
 const port = 42069
-
-type Server struct {
-	Open     atomic.Bool
-	Listener net.Listener
-}
-
-func Serve(port int) (*Server, error) {
-	portString := strconv.Itoa(port)
-
-	l, err := net.Listen("tcp", ":"+portString)
-	if err != nil {
-		return nil, err
-	}
-	server := &Server{
-		Listener: l,
-	}
-	server.Open.Store(true)
-	return server, nil
-}
-
-func (s *Server) listen() {
-	for s.Open {
-		s.Listener.Accept()
-	}
-}
-
-func (s *Server) close() error {
-	s.Open.Store(false)
-}
 
 func main() {
 	server, err := server.Serve(port)

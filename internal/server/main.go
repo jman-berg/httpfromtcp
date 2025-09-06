@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/jman-berg/httpfromtcp/internal/response"
 	"log"
 	"net"
 	"strconv"
@@ -28,8 +29,12 @@ func Serve(port int) (*Server, error) {
 
 func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
-	response := "HTTP/1.1 200 OK\nContent-Type: text/plain\nContent-Length: 13\n\nHello World!\n"
-	conn.Write([]byte(response))
+
+	response.WriteStatusLine(conn, 200)
+	h := response.GetDefaultHeaders(0)
+	if err := response.WriteHeaders(conn, h); err != nil {
+		log.Printf("Error writing errors: %v", err)
+	}
 }
 
 func (s *Server) listen() {

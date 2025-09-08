@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 
 	"github.com/jman-berg/httpfromtcp/internal/headers"
 )
+
+type Writer struct {
+}
 
 type StatusCode int
 
@@ -23,7 +25,7 @@ var statusMessages = map[StatusCode]string{
 	StatusInternalServerError: "HTTP/1.1 500 Internal Server Error\r\n",
 }
 
-func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
+func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
 	msg, ok := statusMessages[statusCode]
 	if !ok {
 		return nil
@@ -44,12 +46,14 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 	return headers
 }
 
-func WriteHeaders(w io.Writer, headers headers.Headers) error {
+func (w *Writer) WriteHeaders(headers headers.Headers) error {
 	for k, v := range headers {
-		_, err := w.Write([]byte(fmt.Sprintf("%s: %s\r\n")))
-	if err != nil {
+		_, err := w.Write([]byte(fmt.Sprintf("%s: %s\r\n", k, v)))
+		if err != nil {
+			return err
+		}
+		_, err = w.Write([]byte("\r\n"))
 		return err
 	}
-	_, err := w.Write([]byte("\r\n"))
-	return err 
+	return nil
 }
